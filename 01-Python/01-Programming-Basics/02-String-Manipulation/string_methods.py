@@ -1,5 +1,4 @@
 # pylint: disable=missing-docstring
-
 # Warning:
 # - One line of code for each method
 # - Just look in the doc for the right method of the String class!
@@ -38,7 +37,7 @@ def remove_surrounding_whitespaces(a_string):
     example: delete_surrounding_whitespaces("  hey yo  ") => "hey yo"
     """
     return a_string.strip()
-    
+
 def replace(initial_string, old_letter, new_letter):
     """
     returns a copy of the string with the new letter replacing the old one
