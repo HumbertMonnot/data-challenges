@@ -61,4 +61,3 @@ def full_description_formatting(first_name, last_name, age):
     example: full_description_formatting("john", "doe", 33) => "John Doe is 33"
     """
     return f"{first_name.capitalize()} {last_name.capitalize()} is {age}"
-
