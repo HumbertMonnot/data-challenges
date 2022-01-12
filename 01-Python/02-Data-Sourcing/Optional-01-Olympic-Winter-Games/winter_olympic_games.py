@@ -1,8 +1,6 @@
 # pylint: disable=missing-docstring
 
 import csv
-import operator
-from typing import Counter
 
 COUNTRIES_FILEPATH = "data/dictionary.csv"
 MEDALS_FILEPATH = "data/winter.csv"
@@ -33,7 +31,6 @@ def country_with_most_gold_medals(min_year, max_year):
                     best_country[row['Country']] =1
                 else :
                     best_country[row['Country']] += 1
-        print(best_country)
         the_best_country =  max(best_country, key=lambda key: best_country[key])
     with open('data/dictionary.csv', encoding = 'utf-8') as csvfile:
         reader = csv.DictReader(csvfile, skipinitialspace=True)
@@ -44,4 +41,17 @@ def country_with_most_gold_medals(min_year, max_year):
 
 def top_three_women_in_five_thousand_meters():
     """Returns the three women with the most 5000 meters medals(gold/silver/bronze)"""
-    pass  # YOUR CODE HERE
+    with open('data/winter.csv', encoding = 'utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, skipinitialspace=True)
+        women_5000 = {}
+        for row in reader:
+            if row['Gender'] == 'Women' and row['Event'] == '5000M':
+                if women_5000.get(row['Athlete'],0) == 0:
+                    women_5000[row['Athlete']] =1
+                else :
+                    women_5000[row['Athlete']] += 1
+    list_athletes = []
+    for _ in range(3):
+        list_athletes.append(max(women_5000, key=lambda key: women_5000[key]))
+        del women_5000[max(women_5000, key=lambda key: women_5000[key])]
+    return list_athletes
