@@ -1,4 +1,8 @@
 # pylint: disable=missing-docstring,invalid-name
+import requests
 
-# TODO: paste the code from Kitt's instructions
-
+url = "https://www.metaweather.com/api/location/search/?query=london"
+response = requests.get(url).json()
+city = response[0]
+print(f"{city['title']}: {city['woeid']} ({city['latt_long']})")
+print(type(city['woeid']))
