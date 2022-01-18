@@ -12,7 +12,7 @@ def fetch_metadata(url):
     url2 = f"""https://opengraph.lewagon.com/?url={url}"""
     response = requests.get(url2)
     if response.status_code != 200:
-        return None
+        return ""
     return response.json()['data']
 
 #To manually test, please uncomment the following lines and run `python opengraph.py`:
