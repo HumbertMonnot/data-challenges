@@ -140,8 +140,14 @@ class Seller:
         Returns a DataFrame with:
         'seller_id', 'share_of_five_stars', 'share_of_one_stars', 'review_score'
         """
-
-        pass  # YOUR CODE HERE
+        def share_1(s):
+            return dict(s.value_counts()).get(1,0)/len(s)
+        def share_5(s):
+            return dict(s.value_counts()).get(5,0)/len(s)
+        df_temp = self.data['order_reviews'].merge(self.data['orders'], on = "order_id").merge(self.data['order_items'], on = "order_id")
+        df_temp = df_temp.groupby('seller_id').agg({'review_score': [np.mean, share_1, share_5]})
+        df_temp.columns = ['review_score','share_of_one_stars','share_of_five_stars']
+        return df_temp
 
     def get_training_data(self):
         """

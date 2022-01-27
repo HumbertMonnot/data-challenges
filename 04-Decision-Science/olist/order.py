@@ -20,23 +20,53 @@ class Order:
         and filters out non-delivered orders unless specified
         """
         # Hint: Within this instance method, you have access to the instance of the class Order in the variable self, as well as all its attributes
-        orders = self.data['orders']
-        delivered_orders = orders[orders['order_status']=='delivered']
-        delivered_orders['order_purchase_timestamp'] = pd.to_datetime(delivered_orders['order_purchase_timestamp'])
-        delivered_orders['order_delivered_customer_date'] = pd.to_datetime(delivered_orders['order_delivered_customer_date'])
-        delivered_orders['order_estimated_delivery_date'] = pd.to_datetime(delivered_orders['order_estimated_delivery_date'])
-        delivered_orders['wait_time']=(delivered_orders['order_delivered_customer_date'] - \
-        delivered_orders['order_purchase_timestamp']) / np.timedelta64(1, 'D')
-        delivered_orders['expected_wait_time']=(delivered_orders['order_estimated_delivery_date'] - \
-        delivered_orders['order_purchase_timestamp']) / np.timedelta64(1, 'D')
+        # $CHALLENGIFY_BEGIN
+        # make sure to create a copy rather than a "view"
+        orders = self.data['orders'].copy()
 
-        delivered_orders['delay_vs_expected'] = [(delivered_orders.wait_time[i] - delivered_orders.expected_wait_time[i])\
-                                         if delivered_orders.wait_time[i] > delivered_orders.expected_wait_time[i] \
-                                        else 0 for i in delivered_orders.index]
-        
-        delivered_orders = delivered_orders[['order_id', 'order_status',    
-       'wait_time', 'expected_wait_time', 'delay_vs_expected']]
-        return delivered_orders
+        # filter delivered orders
+        if is_delivered:
+            orders = orders.query("order_status=='delivered'").copy()
+
+        # handle datetime
+        orders.loc[:, 'order_delivered_customer_date'] = \
+            pd.to_datetime(orders['order_delivered_customer_date'])
+        orders.loc[:, 'order_estimated_delivery_date'] = \
+            pd.to_datetime(orders['order_estimated_delivery_date'])
+        orders.loc[:, 'order_purchase_timestamp'] = \
+            pd.to_datetime(orders['order_purchase_timestamp'])
+
+        # compute delay vs expected
+        orders.loc[:, 'delay_vs_expected'] = \
+            (orders['order_delivered_customer_date'] -
+             orders['order_estimated_delivery_date']) / np.timedelta64(24, 'h')
+
+        def handle_delay(x):
+            # We only want to keep delay where wait_time is longer than expected (not the other way around)
+            # This is what drives customer dissatisfaction!
+            if x > 0:
+                return x
+            else:
+                return 0
+
+        orders.loc[:, 'delay_vs_expected'] = \
+            orders['delay_vs_expected'].apply(handle_delay)
+
+        # compute wait time
+        orders.loc[:, 'wait_time'] = \
+            (orders['order_delivered_customer_date'] -
+             orders['order_purchase_timestamp']) / np.timedelta64(24, 'h')
+
+        # compute expected wait time
+        orders.loc[:, 'expected_wait_time'] = \
+            (orders['order_estimated_delivery_date'] -
+             orders['order_purchase_timestamp']) / np.timedelta64(24, 'h')
+
+        return orders[[
+            'order_id', 'wait_time', 'expected_wait_time', 'delay_vs_expected',
+            'order_status'
+        ]]
+        # $CHALLENGIFY_END
         
         
     def get_review_score(self):
@@ -81,36 +111,76 @@ class Order:
         Returns a DataFrame with:
         order_id, distance_seller_customer
         """
-        location = self.data["geolocation"].groupby('geolocation_zip_code_prefix', as_index = False).first()
-        seller_zip = self.data['order_items'].merge(self.data['orders'], on = "order_id").merge(self.data['sellers'], on = "seller_id")[['order_id', 'seller_id', 'seller_zip_code_prefix']]
+        # $CHALLENGIFY_BEGIN
 
-        seller_zip.columns = ['order_id','seller_id','geolocation_zip_code_prefix']
-        seller_zip = seller_zip.merge(location, on = 'geolocation_zip_code_prefix')
+        # import data
+        data = self.data
+        orders = data['orders']
+        order_items = data['order_items']
+        sellers = data['sellers']
+        customers = data['customers']
 
-        seller_zip.drop_duplicates(subset =["order_id","seller_id"], keep = 'first', inplace=True)
+        # Since one zip code can map to multiple (lat, lng), take the first one
+        geo = data['geolocation']
+        geo = geo.groupby('geolocation_zip_code_prefix',
+                          as_index=False).first()
 
-        customer_zip = self.data['order_items'].merge(self.data['orders'], on = "order_id").merge(self.data['customers'], on = "customer_id")[['order_id', 'customer_id', 'customer_zip_code_prefix']]
+        # Merge geo_location for sellers
+        sellers_mask_columns = [
+            'seller_id', 'seller_zip_code_prefix', 'geolocation_lat', 'geolocation_lng'
+        ]
 
-        customer_zip.columns = ['order_id','customer_id', 'geolocation_zip_code_prefix']
-        customer_zip = customer_zip.merge(location, on = 'geolocation_zip_code_prefix')
+        sellers_geo = sellers.merge(
+            geo,
+            how='left',
+            left_on='seller_zip_code_prefix',
+            right_on='geolocation_zip_code_prefix')[sellers_mask_columns]
 
-        customer_zip.drop_duplicates(subset =["order_id","customer_id"], keep = 'first', inplace=True)
+        # Merge geo_location for customers
+        customers_mask_columns = ['customer_id', 'customer_zip_code_prefix', 'geolocation_lat', 'geolocation_lng']
 
-        coord_orders = seller_zip.merge(customer_zip, on = 'order_id', how = 'inner')
+        customers_geo = customers.merge(
+            geo,
+            how='left',
+            left_on='customer_zip_code_prefix',
+            right_on='geolocation_zip_code_prefix')[customers_mask_columns]
 
-        coord_orders['distance_seller_customer'] = [haversine_distance( \
-                                coord_orders.geolocation_lng_x[i], coord_orders.geolocation_lat_x[i], \
-                                coord_orders.geolocation_lng_y[i], coord_orders.geolocation_lat_y[i]) \
-                                for i in coord_orders.index]
-        coord_orders = coord_orders[['order_id', 'distance_seller_customer']]
+        # Match customers with sellers in one table
+        customers_sellers = customers.merge(orders, on='customer_id')\
+            .merge(order_items, on='order_id')\
+            .merge(sellers, on='seller_id')\
+            [['order_id', 'customer_id','customer_zip_code_prefix', 'seller_id', 'seller_zip_code_prefix']]
+        
+        # Add the geoloc
+        matching_geo = customers_sellers.merge(sellers_geo,
+                                            on='seller_id')\
+            .merge(customers_geo,
+                   on='customer_id',
+                   suffixes=('_seller',
+                             '_customer'))
+        # Remove na()
+        matching_geo = matching_geo.dropna()
 
-        coord_orders.groupby('order_id', as_index=False).mean()
+        matching_geo.loc[:, 'distance_seller_customer'] =\
+            matching_geo.apply(lambda row:
+                               haversine_distance(row['geolocation_lng_seller'],
+                                                  row['geolocation_lat_seller'],
+                                                  row['geolocation_lng_customer'],
+                                                  row['geolocation_lat_customer']),
+                               axis=1)
+        # Since an order can have multiple sellers,
+        # return the average of the distance per order
+        order_distance =\
+            matching_geo.groupby('order_id',
+                                 as_index=False).agg({'distance_seller_customer':
+                                                      'mean'})
 
-        return coord_orders
+        return order_distance
+        # $CHALLENGIFY_END
 
     def get_training_data(self,
                           is_delivered=True,
-                          with_distance_seller_customer=True):
+                          with_distance_seller_customer=False):
         """
         Returns a clean DataFrame (without NaN), with the all following columns:
         ['order_id', 'wait_time', 'expected_wait_time', 'delay_vs_expected',
@@ -119,13 +189,22 @@ class Order:
         'distance_seller_customer']
         """
         # Hint: make sure to re-use your instance methods defined above
-        df1 = self.get_wait_time()
-        df2 = self.get_review_score()
-        df3 = self.get_number_products()
-        df4 = self.get_number_sellers()
-        df5 = self.get_price_and_freight()
-        df6 = self.get_distance_seller_customer()
-        training_data = df1.merge(df2, on ='order_id').merge(df3, on ='order_id').merge(df4, on ='order_id').merge(df5, on ='order_id')#.merge(df6, on='order_id')      
-        training_data.dropna(inplace = True)
-        return training_data
-        
+        # $CHALLENGIFY_BEGIN
+        training_set =\
+            self.get_wait_time(is_delivered)\
+                .merge(
+                self.get_review_score(), on='order_id'
+            ).merge(
+                self.get_number_products(), on='order_id'
+            ).merge(
+                self.get_number_sellers(), on='order_id'
+            ).merge(
+                self.get_price_and_freight(), on='order_id'
+            )
+        # Skip heavy computation of distance_seller_customer unless specified
+        if with_distance_seller_customer:
+            training_set = training_set.merge(
+                self.get_distance_seller_customer(), on='order_id')
+
+        return training_set.dropna()
+        # $CHALLENGIFY_END
