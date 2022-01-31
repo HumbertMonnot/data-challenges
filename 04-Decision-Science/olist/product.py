@@ -130,7 +130,15 @@ class Product:
                ).merge(
                 self.get_sales(), on='product_id'
                )
-
+        def cost_review(v):
+            if v == 1:
+                return 100
+            elif v == 2:
+                return 50
+            elif v == 3:
+                return 40
+            return 0
+        training_set['review_cost']=training_set['review_score'].apply(cost_review)
         return training_set
 
     def get_product_cat(self, agg="mean"):
@@ -142,3 +150,10 @@ class Product:
         '''
         pass  # YOUR CODE HERE
 
+    def get_cost_reviews(self):
+        data = Olist().get_data()
+        
+        with_cost = self
+        with_cost['review_cost']=self['review_score'].apply(cost_review)
+        
+        return with_cost

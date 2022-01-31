@@ -3,6 +3,14 @@ import numpy as np
 from olist.data import Olist
 from olist.order import Order
 
+def nps_per_seller(df):
+    data = Olist().get_data()
+    _df = data['orders'].merge(data['order_reviews'], on = "order_id")
+    _df['nps'] = _df['review_score'].map({5:1, 4:0, 3:-1, 2:-1, 1:-1})
+    _df = _df.merge(data['order_items'], on = "order_id")
+    _df = _df.groupby('seller_id', as_index = False).mean()
+    _df = _df[['seller_id', "nps"]]
+    return df.merge(_df, on = "seller_id")
 
 class Seller:
     def __init__(self):
@@ -174,4 +182,28 @@ class Seller:
             training_set = training_set.merge(self.get_review_score(),
                                               on='seller_id')
 
-        return training_set
+        data = Olist().get_data()
+        def cost_review(v):
+            if v == 1:
+                return 100
+            elif v == 2:
+                return 50
+            elif v == 3:
+                return 40
+            return 0
+
+        ord_sel = data['orders'].merge(data['order_items'], on = "order_id")[['seller_id', 'order_id']]
+        ord_sel.drop_duplicates(keep = 'first', inplace = True)
+        ord_sel = ord_sel.merge(data['order_reviews'], on = 'order_id')[['seller_id', "review_score",'order_id']]
+
+        ord_sel['review_cost']=ord_sel['review_score'].apply(cost_review)
+
+        ord_sel = ord_sel[["seller_id", "review_cost"]].groupby("seller_id", as_index=False).sum()
+        training_set = training_set.merge(ord_sel, on = 'seller_id')
+        training_set.loc[:,'olist_revenue']=training_set.loc[:,'months_on_olist']*80 + training_set.loc[:,'sales']*0.1
+        
+        training_set['olist_profit'] = training_set['olist_revenue'] - training_set['review_cost']
+        
+        training_set = nps_per_seller(training_set)
+        
+        return training_set.sort_values("olist_profit")

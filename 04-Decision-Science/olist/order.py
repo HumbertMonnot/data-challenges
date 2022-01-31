@@ -180,7 +180,7 @@ class Order:
 
     def get_training_data(self,
                           is_delivered=True,
-                          with_distance_seller_customer=False):
+                          with_distance_seller_customer=True):
         """
         Returns a clean DataFrame (without NaN), with the all following columns:
         ['order_id', 'wait_time', 'expected_wait_time', 'delay_vs_expected',
